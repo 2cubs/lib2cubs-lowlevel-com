@@ -21,6 +21,31 @@ in case of our need.
 **Important**: Keep in mind, that different App-Frame Types have different decoding/encoding procedure.
 For example Stream of bytes can't be expected to work the same way as Simple Message.
 
+### Choices and considerations
+ * **Why using "json" instead of native python pickle format?**
+    1. Because the protocol suppose to be lightweight, but easily adaptable across different
+       languages and technologies. So if the Server or Client implementation will go with "C/C++"
+       They should not implement "pickle" parser or use additional libraries just for that purpose.
+       Json - is simple and pretty much native across all the languages and technologies.
+    2. Flexibility of this approach allows to use pickle format as an underlying format encapsulated string.
+       Or to use pickle format through extending the protocol and providing mime type metadata flag, specifying
+       what is the content of the payload. 
+ * **Why exactly this format of the App-Frame?**
+    * It's simple and flexible. It might be less efficient than other formats, but I wanted to implement
+      it exactly this way, because I consider it as a combination of flexibility, modularity and 
+      extensibility. So it's well thought through but personal choice. 
+      Any improvements are welcome!
+ * **Why splitting the first byte of a frame by 4 bit's value each?**
+    * To reduce redundant bytes being sent. Value of 4 bits for af-type is more than enough,
+      and 4 bits for size-of-size is more than enough as well. So benefit 
+      of sparing 1 additional byte per frame is obvious! :D
+ * **Why using base64 encoding for metadata and why json inside?**
+    * About json - is exactly the same answer as above in the very first bullet point
+    * About base64 - It's not the most efficient format for the exchange, but it allows to simplify
+      parsing and separating the payload and the metadata simply by "\n" symbol. With all
+      mentioned above with a careful usage of metadata field - it might be a comfortable way
+      to work with. And Base64 format protects from having "\n" symbol breaking the format 
+      (due to alphabet of the Base64 encoding)
 
 ### App-Frame types (af-type)
 App-Frame type is represented by first 4 bits of 
@@ -51,7 +76,7 @@ So basically it stores size of the size of the content (Don't ask why I did it t
 that I'm a crazy person).
 
 The first 10 types (0x0 - 0x9) are reserved for the needs of the library developers,
-we kindly ask you to do not use it.
+we kindly ask you to do not use them.
 
 If you really sure that you want to create your own types (and processors for them)
 You can use one or few from the last part of the range, values 0xA - 0xF are free to use
