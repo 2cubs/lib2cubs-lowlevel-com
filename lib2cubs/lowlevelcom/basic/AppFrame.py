@@ -1,8 +1,6 @@
 from abc import ABCMeta
 
-from lib2cubs.lowlevelcom.CommunicationEngine import CommunicationEngine
-from lib2cubs.lowlevelcom.basic.EngineFoundation import EngineFoundation
-from lib2cubs.lowlevelcom.basic.MetadataField import MetadataField
+from lib2cubs.lowlevelcom.basic import EngineFoundation, MetadataField
 
 
 class AppFrame(metaclass=ABCMeta):
@@ -13,10 +11,6 @@ class AppFrame(metaclass=ABCMeta):
 	_size: int = 0
 	_metadata: MetadataField = None
 	_content: any = None
-
-	@property
-	def af_type(self):
-		return self.AF_TYPE
 
 	@property
 	def sz_of_sz(self):
@@ -62,13 +56,13 @@ class AppFrame(metaclass=ABCMeta):
 
 	@classmethod
 	def get_proper_frame_size(cls, length: int) -> int or None:
-		for p, m in CommunicationEngine.size_byte_list().items():
+		for p, m in EngineFoundation.size_byte_list().items():
 			if length <= m:
 				return p
 		return None
 
 	def _check_data(self):
-		if self._sz_of_sz > CommunicationEngine.SIZE_BYTE_15:
+		if self._sz_of_sz > EngineFoundation.SIZE_BYTE_15:
 			raise Exception('Max frame size is reached')
 
 	def generate(self):
@@ -102,27 +96,18 @@ class AppFrame(metaclass=ABCMeta):
 		self.content = content
 		self.metadata = metadata
 
-	# TODO refactor
 	def explain(self):
 		s = ''
 		frame = bytes(self)
 		s += f'## {frame}\n'
-		first_byte = frame[0]
-		af_type = int(first_byte >> 4)
-		s += f'## AF-type [ {af_type:04b} ]:\t\t{af_type}\n'
-
-		szofsz = int(first_byte & 0x0F)
-		s += f'## Sz-of-sz [ {szofsz:04b} ]:\t\t{szofsz}\n'
-
-		sz = frame[1:szofsz + 1]
-		sz_int = int.from_bytes(sz, 'big')
-		s += f'## Payload size [ {sz} ]:\t{sz_int}\n'
-
-		meta, payload = frame[szofsz + 1:].decode('utf-8').split('\n', maxsplit=1)
-		if meta:
-			s += f'## Meta [ {meta} ]:\t{MetadataField(meta).unpack()}\n'
+		s += f'## AF-type [ {self.AF_TYPE:04b} ]:\t\t{self.AF_TYPE}\n'
+		s += f'## Sz-of-sz [ {self._sz_of_sz:04b} ]:\t\t{self._sz_of_sz}\n'
+		sz_bytes = self._size.to_bytes(self._sz_of_sz, 'big')
+		s += f'## Payload size [ {sz_bytes} ]:\t{self._size}\n'
+		if self._metadata:
+			s += f'## Meta [ {self._metadata.pack()} ]:\t{self._metadata}\n'
 		else:
 			s += f'## No metadata!\n'
-		s += f'## Payload:\t{self.content_unbyte(payload)}\n'
+		s += f'## Payload:\t{self._content}\n'
 
 		return s
