@@ -22,6 +22,12 @@ def do_explain(args: Namespace):
 
 
 def _connection_of_type(args, sec, unsec):
+	CommunicationEngine.ssl_client_key = args.client_key
+	CommunicationEngine.ssl_client_cert = args.client_cert
+	CommunicationEngine.ssl_server_key = args.server_key
+	CommunicationEngine.ssl_server_cert = args.server_cert
+	CommunicationEngine.ssl_server_hostname = args.verification_hostname
+
 	if args.unsecure:
 		if args.yes_i_totally_understand_risks:
 			unsec()
@@ -76,11 +82,5 @@ p = sps.add_parser('client', parents=[parent])
 p.set_defaults(func=do_client)
 
 args = parser.parse_args()
-
-CommunicationEngine.ssl_client_key = args.client_key
-CommunicationEngine.ssl_client_cert = args.client_cert
-CommunicationEngine.ssl_server_key = args.server_key
-CommunicationEngine.ssl_server_cert = args.server_cert
-CommunicationEngine.ssl_server_hostname = args.verification_hostname
 
 args.func(args)
