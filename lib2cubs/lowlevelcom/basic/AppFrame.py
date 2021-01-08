@@ -1,4 +1,5 @@
 from abc import ABCMeta
+from ssl import SSLWantReadError
 
 from lib2cubs.lowlevelcom.basic import EngineFoundation, MetadataField
 
@@ -11,6 +12,14 @@ class AppFrame(metaclass=ABCMeta):
 	_size: int = 0
 	_metadata: MetadataField = None
 	_content: any = None
+
+	_first_field: int = None
+	_first_field_af_type: int = None
+	_first_field_szofsz: int = None
+	_second_field_bs: bytearray = b''
+	_second_field: int = None
+	_is_construction_completed: bool = False
+	_payload: bytearray = b''
 
 	@property
 	def sz_of_sz(self):
@@ -80,6 +89,8 @@ class AppFrame(metaclass=ABCMeta):
 
 	@classmethod
 	def parse(cls, data: bytes):
+		if not data:
+			return False
 		first_byte = data[0]
 		af_type = int(first_byte >> 4)
 		if cls.AF_TYPE != af_type:
@@ -89,12 +100,56 @@ class AppFrame(metaclass=ABCMeta):
 
 		return cls(cls.content_unbyte(content), MetadataField.parse(meta))
 
+	def is_construction_completed(self):
+		return self._is_construction_completed
+
+	def from_socket(self, sock):
+		if self._first_field is None:
+			r = sock.recv(1)
+			if not r:
+				return None
+			self._first_field = int.from_bytes(r, 'big')
+			self._first_field_af_type = int(self._first_field >> 4)
+			if self.AF_TYPE != self._first_field_af_type:
+				raise Exception('AF-type mismatch. Use correct class/AF-type')
+			self._first_field_szofsz = int(self._first_field & 0x0F)
+		if self._first_field is not None:
+			if len(self._second_field_bs) < self._first_field_szofsz:
+				r = sock.recv(self._first_field_szofsz)
+				if not r:
+					return None
+				self._second_field_bs += r
+			if len(self._second_field_bs) == self._first_field_szofsz:
+				self._second_field = int.from_bytes(self._second_field_bs, 'big')
+			if self._second_field > 0:
+				r = sock.recv(self._second_field)
+				if not r:
+					return None
+				self._payload += r
+				if len(self._payload) == self._second_field:
+					meta, content = self._payload.decode('utf-8').split('\n', maxsplit=1)
+					self.content = self.content_unbyte(content)
+					self.metadata = MetadataField.parse(meta)
+					self.clear_construct()
+		return True
+
+	def clear_construct(self):
+		self._first_field = None
+		self._first_field_af_type = None
+		self._first_field_szofsz = None
+		self._second_field_bs = b''
+		self._second_field = None
+		self._payload = b''
+		self._is_construction_completed = True
+
 	def __str__(self):
 		return self.explain()
 
 	def __init__(self, content: any = None, metadata: dict or MetadataField = None):
 		self.content = content
 		self.metadata = metadata
+		if content is None:
+			self._is_construction_completed = False
 
 	def explain(self):
 		s = ''

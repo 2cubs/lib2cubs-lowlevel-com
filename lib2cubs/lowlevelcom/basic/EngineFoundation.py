@@ -1,3 +1,5 @@
+import socket
+import ssl
 from collections import OrderedDict
 
 
@@ -19,7 +21,6 @@ class EngineFoundation:
 	SIZE_BYTE_14 = 5192296858534827628530496329220096
 	SIZE_BYTE_15 = 1329227995784915872903807060280344576
 
-
 	AF_TYPE_0 = 0x0
 	AF_TYPE_1 = 0x1
 	AF_TYPE_2 = 0x2
@@ -36,6 +37,45 @@ class EngineFoundation:
 	AF_TYPE_D = 0xD
 	AF_TYPE_E = 0xE
 	AF_TYPE_F = 0xF
+
+	TYPE_SERVER = 'server'
+	TYPE_CLIENT = 'client'
+
+	ssl_server_cert = None
+	ssl_server_key = None
+	ssl_client_cert = None
+	ssl_client_key = None
+	ssl_server_hostname = None
+
+	@classmethod
+	def prepare_ssl_context(cls, t: str):
+		if cls.TYPE_SERVER == t:
+			purpose = ssl.Purpose.CLIENT_AUTH
+			ca_file = cls.ssl_client_cert
+			cert = cls.ssl_server_cert
+			key = cls.ssl_server_key
+		else:
+			purpose = ssl.Purpose.SERVER_AUTH
+			ca_file = cls.ssl_server_cert
+			cert = cls.ssl_client_cert
+			key = cls.ssl_client_key
+
+		context = ssl.create_default_context(purpose)
+		context.verify_mode = ssl.CERT_REQUIRED
+		context.load_verify_locations(cafile=ca_file)
+		context.load_cert_chain(certfile=cert, keyfile=key)
+
+		return context
+
+	@classmethod
+	def prepare_socket(cls, t: str, endpoint: str, port: int) -> socket.socket:
+		sock = socket.socket()
+		if cls.TYPE_SERVER == t:
+			sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+			sock.bind((endpoint, port))
+			sock.listen()
+		# sock.setblocking(False)
+		return sock
 
 	@classmethod
 	def size_byte_list(cls) -> OrderedDict:
