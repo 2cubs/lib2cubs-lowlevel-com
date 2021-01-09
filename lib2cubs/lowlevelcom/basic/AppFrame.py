@@ -1,5 +1,5 @@
 from abc import ABCMeta
-from ssl import SSLWantReadError
+from ssl import SSLWantReadError, SSLError
 
 from lib2cubs.lowlevelcom.basic import EngineFoundation, MetadataField
 
@@ -104,33 +104,36 @@ class AppFrame(metaclass=ABCMeta):
 		return self._is_construction_completed
 
 	def from_socket(self, sock):
-		if self._first_field is None:
-			r = sock.recv(1)
-			if not r:
-				return None
-			self._first_field = int.from_bytes(r, 'big')
-			self._first_field_af_type = int(self._first_field >> 4)
-			if self.AF_TYPE != self._first_field_af_type:
-				raise Exception('AF-type mismatch. Use correct class/AF-type')
-			self._first_field_szofsz = int(self._first_field & 0x0F)
-		if self._first_field is not None:
-			if len(self._second_field_bs) < self._first_field_szofsz:
-				r = sock.recv(self._first_field_szofsz)
+		try:
+			if self._first_field is None:
+				r = sock.recv(1)
 				if not r:
 					return None
-				self._second_field_bs += r
-			if len(self._second_field_bs) == self._first_field_szofsz:
-				self._second_field = int.from_bytes(self._second_field_bs, 'big')
-			if self._second_field > 0:
-				r = sock.recv(self._second_field)
-				if not r:
-					return None
-				self._payload += r
-				if len(self._payload) == self._second_field:
-					meta, content = self._payload.decode('utf-8').split('\n', maxsplit=1)
-					self.content = self.content_unbyte(content)
-					self.metadata = MetadataField.parse(meta)
-					self.clear_construct()
+				self._first_field = int.from_bytes(r, 'big')
+				self._first_field_af_type = int(self._first_field >> 4)
+				if self.AF_TYPE != self._first_field_af_type:
+					raise Exception('AF-type mismatch. Use correct class/AF-type')
+				self._first_field_szofsz = int(self._first_field & 0x0F)
+			if self._first_field is not None:
+				if len(self._second_field_bs) < self._first_field_szofsz:
+					r = sock.recv(self._first_field_szofsz)
+					if not r:
+						return None
+					self._second_field_bs += r
+				if len(self._second_field_bs) == self._first_field_szofsz:
+					self._second_field = int.from_bytes(self._second_field_bs, 'big')
+				if self._second_field > 0:
+					r = sock.recv(self._second_field)
+					if not r:
+						return None
+					self._payload += r
+					if len(self._payload) == self._second_field:
+						meta, content = self._payload.decode('utf-8').split('\n', maxsplit=1)
+						self.content = self.content_unbyte(content)
+						self.metadata = MetadataField.parse(meta)
+						self.clear_construct()
+		except SSLError as e:
+			print(f'SSL error happened. But we are skipping it: {e}')
 		return True
 
 	def clear_construct(self):
