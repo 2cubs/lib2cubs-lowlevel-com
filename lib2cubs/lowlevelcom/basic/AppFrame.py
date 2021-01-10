@@ -133,8 +133,15 @@ class AppFrame(metaclass=ABCMeta):
 						self.metadata = MetadataField.parse(meta)
 						self.clear_construct()
 		except SSLError as e:
-			print(f'SSL error happened. But we are skipping it: {e}')
+			if e.reason is not None:
+				if e.reason in ('SSLV3_ALERT_BAD_RECORD_MAC', 'DECRYPTION_FAILED_OR_BAD_RECORD_MAC'):
+					self.reconnect_cb(sock)
+				else:
+					print(f'Some other error happened: {e}')
+
 		return True
+
+	reconnect_cb: callable = None
 
 	def clear_construct(self):
 		self._first_field = None
