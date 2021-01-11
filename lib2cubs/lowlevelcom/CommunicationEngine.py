@@ -66,12 +66,7 @@ class CommunicationEngine(EngineFoundation):
 
 		with cls.prepare_socket(t, endpoint, port) as sock:
 			with context.wrap_socket(sock, server_side=True) as secure_sock:
-				# secure_sock.setblocking(False)
 				cb(secure_sock)
-				# while True:
-				# 	conn, addr = secure_sock.accept()
-				# 	cb(conn)
-				# 	conn.close()
 
 	@classmethod
 	def secure_client(cls, cb: callable, endpoint: str = '127.0.0.1', port: int = 60009):
@@ -81,5 +76,4 @@ class CommunicationEngine(EngineFoundation):
 		with cls.prepare_socket(t, endpoint, port) as sock:
 			with context.wrap_socket(sock, server_hostname=cls.ssl_server_hostname) as secure_sock:
 				secure_sock.connect((endpoint, port))
-				# secure_sock.setblocking(False)
 				cb(secure_sock)
