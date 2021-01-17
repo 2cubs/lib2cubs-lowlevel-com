@@ -65,7 +65,7 @@ class AppFrame(metaclass=ABCMeta):
 	@classmethod
 	def get_proper_frame_size(cls, length: int) -> int or None:
 		for p, m in EngineFoundation.size_byte_list().items():
-			if length <= m:
+			if length < m:
 				return p
 		return None
 
@@ -79,9 +79,14 @@ class AppFrame(metaclass=ABCMeta):
 		metadata = bytes(self._metadata) if self._metadata else b''
 
 		head = int(f"{self.AF_TYPE:04b}{self._sz_of_sz:04b}", 2).to_bytes(1, 'big')
-		neck = int("{msg_len:0{width}b}".format(msg_len=self._size, width=self._sz_of_sz * 8), 2).to_bytes(self._sz_of_sz, 'big')
-
-		return head + neck + metadata + b'\n' + content
+		try:
+			neck = int("{msg_len:0{width}b}".format(msg_len=self._size, width=self._sz_of_sz * 8), 2).to_bytes(self._sz_of_sz, 'big')
+			return head + neck + metadata + b'\n' + content
+		except OverflowError as e:
+			print('OverflowError happened')
+			print(f'self._size | msg_len: {self._size}')
+			print(f'self._sz_of_sz | width: {self._sz_of_sz} (* 8)')
+			exit(0)
 
 	def __bytes__(self):
 		return self.generate()
