@@ -1,9 +1,12 @@
 import socket
 import ssl
-from ssl import SSLSocket, SSLContext
+import sys
+from ssl import SSLSocket, SSLContext, SSLError
 
 __author__ = "Ivan Ponomarev"
 __email__ = "pi@spaf.dev"
+
+from time import sleep
 
 
 class Connection:
@@ -127,6 +130,10 @@ class Connection:
 		"""
 		return self._host, self._port
 
+	@property
+	def is_connected(self):
+		return self._is_connected
+
 	def init(self, reinit: bool = False):
 		"""
 		Init will workout only once if no parameter or False provided, so you can use it in a transparent way.
@@ -142,7 +149,7 @@ class Connection:
 	def _after_open_connection(self):
 		self._socket.setblocking(self._is_blocking)
 
-	def connect(self):
+	def connect(self, recreate: bool = False):
 		"""
 		Connecting to the server.
 		Method is applicable only for a Client
@@ -152,9 +159,10 @@ class Connection:
 			raise Exception(f'You can\'t connect for this connection type [{self._type}].')
 
 		# Initialisation
-		self.init()
+		self.init(recreate)
 		# Connecting to the server
 		self._socket.connect(self.get_endpoint())
+		self._is_connected = True
 		self._after_open_connection()
 
 	def listen(self):
@@ -182,17 +190,37 @@ class Connection:
 			return self._bf_frame_form
 		return None
 
+	def send_frame(self, frame):
+		try:
+			self._socket.send(bytes(frame))
+		except OSError as e:
+			print('Can\'t write to the socket')
+
 	def _receive_chunk(self):
 		len_diff = self._bf_msg_len_expected - len(self._bf_bytes_form)
 		if len_diff > 0:
 			try:
 				b = self._socket.recv(len_diff)
 				if not b:
+					self._connection_is_closed()
 					return None
 				self._bf_bytes_form += b
+			except (SSLError, ConnectionResetError, OverflowError, MemoryError) as e:
+				if ('reason' in e.__dict__ and e.reason is not None) or isinstance(e, MemoryError) or isinstance(e, ConnectionResetError) or isinstance(e, OverflowError):
+					print(f'Reconnect is needed: {e}')
+					self._connection_is_closed()
+					return None
+				# 	Operation did not complete can happen here, so do not break the connection
 			except BlockingIOError as e:
 				pass
+			except OSError as e:
+				print('Can\'t read from the socket')
 		return True
+
+	def _connection_is_closed(self):
+		self._is_connected = False
+		self._socket.close()
+		print('Has disconnected')
 
 	def _gather_frame_from_socket(self, frame_class):
 		if not self._receive_chunk():
@@ -220,45 +248,13 @@ class Connection:
 			# Received all the data, and making frame from it
 			self._bf_msg_len_expected = 1
 			self._bf_step_completed_1 = self._bf_step_completed_2 = False
-			self._bf_frame_form = frame_class.parse(self._bf_bytes_form)
+			try:
+				self._bf_frame_form = frame_class.parse(self._bf_bytes_form)
+			except ValueError as e:
+				print(f'Reconnect is needed: {e}')
+				self._connection_is_closed()
+				return None
 			self._bf_bytes_form = bytearray()
 			return self._bf_frame_form
-
-		return True
-
-		# try:
-		# 	if self._first_field is None:
-		# 		r = self._socket.recv(_len_diff)
-		# 		if not r:
-		# 			return None
-		# 		self._first_field = int.from_bytes(r, 'big')
-		# 		self._first_field_af_type = int(self._first_field >> 4)
-		# 		if self.AF_TYPE != self._first_field_af_type:
-		# 			raise Exception('AF-type mismatch. Use correct class/AF-type')
-		# 		self._first_field_szofsz = int(self._first_field & 0x0F)
-		# 	if self._first_field is not None:
-		# 		if len(self._second_field_bs) < self._first_field_szofsz:
-		# 			r = sock.recv(self._first_field_szofsz)
-		# 			if not r:
-		# 				return None
-		# 			self._second_field_bs += r
-		# 		if len(self._second_field_bs) == self._first_field_szofsz:
-		# 			self._second_field = int.from_bytes(self._second_field_bs, 'big')
-		# 		if self._second_field > 0:
-		# 			r = sock.recv(self._second_field)
-		# 			if not r:
-		# 				return None
-		# 			self._payload += r
-		# 			if len(self._payload) == self._second_field:
-		# 				meta, content = self._payload.decode('utf-8').split('\n', maxsplit=1)
-		# 				self.content = self.content_unbyte(content)
-		# 				self.metadata = MetadataField.parse(meta)
-		# 				self.clear_construct()
-		# except SSLError as e:
-		# 	if e.reason is not None:
-		# 		if e.reason in ('SSLV3_ALERT_BAD_RECORD_MAC', 'DECRYPTION_FAILED_OR_BAD_RECORD_MAC'):
-		# 			print(f'Reconnect is needed: {e}')
-		# 		else:
-		# 			print(f'Some other error happened: {e}')
 
 		return True
