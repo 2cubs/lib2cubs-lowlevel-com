@@ -13,7 +13,7 @@ due receiving getting the sequence, reading it and processing to get the origina
 content.
 
 This mechanism does not define the particular High-Level interpretation or meaning,
-So anybody who want's to implement their own High-Level protocol are fully welcome.
+So anybody who wants to implement their own High-Level protocol are fully welcome.
 Such separation of the levels allow to do not limit others to our way of thinking 
 (by using only json for messages/RPCs exchange) and to do not limit ourselves to use XML or YAML
 in case of our need.

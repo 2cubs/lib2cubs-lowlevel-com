@@ -1,13 +1,11 @@
 from setuptools import setup, find_packages
 
-from lib2cubs.lowlevelcom import LIB_VERSION, LIB_NAME
-
 with open('README.md', 'r', encoding='utf-8') as fd:
 	long_desc = fd.read()
 
 setup(
-	name=LIB_NAME,
-	version=LIB_VERSION,
+	name='lib2cubs-lowlevel-com',
+	version='1.0.0',
 	author='Ivan Ponomarev',
 	author_email='pi@spaf.dev',
 	description='2cubs low-level communication library',
