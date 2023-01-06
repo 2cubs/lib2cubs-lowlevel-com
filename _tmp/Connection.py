@@ -1,12 +1,10 @@
 import socket
 import ssl
-import sys
-from ssl import SSLSocket, SSLContext, SSLError
+from ssl import SSLSocket, SSLContext, SSLError, SSLWantReadError
 
-__author__ = "Ivan Ponomarev"
-__email__ = "pi@spaf.dev"
-
-from time import sleep
+from lib2cubs.lowlevelcom.basic import SimpleFrame
+from lib2cubs.lowlevelcom.exceptions import SecurityError
+from lib2cubs.lowlevelcom.ssl import SSLInfoContainer
 
 
 class Connection:
@@ -33,35 +31,37 @@ class Connection:
 	_bf_step_completed_1: bool = False
 	_bf_step_completed_2: bool = False
 
-	# TODO Subject to revision
-	ssl_server_cert = None
-	ssl_server_key = None
-	ssl_client_cert = None
-	ssl_client_key = None
-	ssl_server_hostname = None
+	ssl_info: SSLInfoContainer = None
 
-	def __init__(self, t: str, host: str = None, port: int = None, sock: SSLSocket = None, is_connected: bool = False, is_reconnecting: bool = None):
-		"""
-		Constructor. Does not require to provide all the params.
-		All the params except the very first one are optional.
+	# def __init__(self, t: str, host: str = None, port: int = None, sock: SSLSocket = None, is_connected: bool = False, is_reconnecting: bool = None):
+	def __init__(self, connection_type: str, host: str = None, port: int = None,
+				ssl_info: SSLInfoContainer or None or False = None):
 
-		:param t: The type of connection
-		:param host: Host
-		:param port: Port
-		:param sock: Secure Socket
-		:param is_reconnecting: Can it reconnect in case of failure? (If not set, then true only if type is client)
-		:param is_connected: Is it already connected?
-		"""
-		self._type = t
-		self._host = host
+		self.ssl_info = ssl_info
+
+		self._type = connection_type
 		self._host = host
 		self._port = port
-		self._socket = sock
-		self._is_reconnecting = is_reconnecting if is_reconnecting is not None else t == self.TYPE_CLIENT
-		self._is_connected = is_connected
+		# self._socket = sock
+		# self._is_reconnecting = is_reconnecting if is_reconnecting is not None else t == self.TYPE_CLIENT
+		# self._is_connected = is_connected
 		self._bf_bytes_form = bytearray()
-		if self._is_connected:
-			self._after_open_connection()
+		# if self._is_connected:
+		# 	self._after_open_connection()
+
+	@property
+	def is_ssl_disabled(self):
+		return self.ssl_info is False
+
+	@property
+	def is_ssl_provided(self):
+		return bool(self.ssl_info)
+
+	def check_if_ready_to_connect(self):
+		if self.ssl_info is None:
+			raise SecurityError('ssl_info parameter is not filled. If you are sure you want to '
+								'skip encryption (Which is the worst idea ever!) - then specify "False" '
+								'to disable this exception (again, please don\'t do that!)')
 
 	def _prepare_ssl_context(self) -> SSLContext:
 		"""
@@ -104,14 +104,17 @@ class Connection:
 
 	def _create_socket(self, overwrite: bool = False):
 		"""
-		Generating/Regenerating SSL socket to be used further.
+		Generating/Regenerating SSL/Normal socket to be used further.
 		:param overwrite: If True - would cause to recreating existing socket. Needed for reconnection
 		:return:
 		"""
 		if overwrite or self._socket is None:
 			if self._socket is not None:
 				self._socket.close()
-			self._socket = self._prepare_ssl_context().wrap_socket(self._prepare_socket(), **self._get_wrap_socket_params())
+			if not self.is_ssl_disabled:
+				self._socket = self._prepare_ssl_context().wrap_socket(self._prepare_socket(), **self._get_wrap_socket_params())
+			else:
+				self._socket = self._prepare_socket()
 
 	def _prepare_socket(self) -> socket.socket:
 		"""
@@ -141,10 +144,20 @@ class Connection:
 		:param reinit:
 		:return:
 		"""
+		self.check_if_ready_to_connect()
+
 		if reinit or not self._is_inited:
 			self._is_inited = False
 			self._create_socket(reinit)
 			self._is_inited = True
+
+	@property
+	def is_blocking_allowed(self):
+		return self._is_blocking
+
+	@is_blocking_allowed.setter
+	def is_blocking_allowed(self, val):
+		self._is_blocking = bool(val)
 
 	def _after_open_connection(self):
 		self._socket.setblocking(self._is_blocking)
@@ -181,12 +194,31 @@ class Connection:
 		self._socket.listen()
 		self._after_open_connection()
 
+	@property
+	def host(self):
+		return self._host
+
+	@property
+	def port(self):
+		return self._port
+
+	def set_connection_info(self, sock, is_connected: bool = False, run_after_open_event: bool = True):
+		self._socket = sock
+		self._is_connected = is_connected
+		if run_after_open_event:
+			self._after_open_connection()
+
+	def make_child(self, t, sock, host, port):
+		child_connection = self.__class__(t, host, port)
+		child_connection.set_connection_info(sock, True)
+		return child_connection
+
 	def accept(self, t: str = ''):
 		sock, addr = self._socket.accept()
-		return self.__class__(t, sock=sock, host=addr[0], port=addr[1], is_connected=True)
+		return self.make_child(t, sock, addr[0], addr[1])
 
 	def get_last_received_frame(self):
-		if self._bf_frame_form.is_construction_completed():
+		if self._bf_frame_form and self._bf_frame_form.is_construction_completed():
 			return self._bf_frame_form
 		return None
 
@@ -195,6 +227,21 @@ class Connection:
 			self._socket.send(bytes(frame))
 		except OSError as e:
 			print('Can\'t write to the socket')
+
+	def collect_frame(self):
+		frame = None
+		try:
+			frame = self._gather_frame_from_socket(SimpleFrame)
+			if frame is None:
+				print('Exited')
+		except SSLWantReadError as e:
+			# todo move to ll
+			pass
+
+		if isinstance(frame, SimpleFrame):
+			return frame
+
+		return False
 
 	def _receive_chunk(self):
 		len_diff = self._bf_msg_len_expected - len(self._bf_bytes_form)

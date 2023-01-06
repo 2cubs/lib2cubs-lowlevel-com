@@ -1,0 +1,5 @@
+
+
+class SecurityError(BaseException):
+
+	pass
