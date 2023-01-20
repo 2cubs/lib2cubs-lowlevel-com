@@ -1,10 +1,7 @@
-import select
-import socket
-import threading
-from datetime import datetime
 from threading import Thread
 
-from lib2cubs.lowlevelcom import ConnInfoBlock, GenericConnection, Utils
+from lib2cubs.lowlevelcom import GenericConnection
+from lib2cubs.lowlevelcom.BaseServerHandler import BaseServerHandler
 
 
 class ExampleServer(Thread):
@@ -18,70 +15,53 @@ class ExampleServer(Thread):
 	_port: int = None
 	_pem_bundle_name: str = None
 
-	def __init__(self, pem_bundle_name: str, host: str = 'localhost', port: int = 60009):
+	_is_ssl_disabled: bool = False
+
+	_connection_threads = None
+
+	@property
+	def is_ssl_disabled(self):
+		return self._is_ssl_disabled
+
+	def __init__(self, pem_bundle_name: str, host: str = 'localhost', port: int = 60009,
+				disable_ssl: bool = False,
+				confirm_disabling_of_ssl: bool = False):
 		super(ExampleServer, self).__init__()
 		self._host = host
 		self._port = port
 		self._pem_bundle_name = pem_bundle_name
-
-	def event_reconnect(self, event, this: GenericConnection):
-		print(f'OOPS. Reconnect event, what to do?! {this._cib}')
-
-	def event_writing(self, event, this: GenericConnection, data):
-		print(f'Writing of data: {data}')
-
-	def event_reading(self, event, this: GenericConnection, data):
-		print(f'Received: {data}')
-		ts = datetime.now()
-		reply = f'ECHO({data.decode()}) /{ts}/'
-		print(f'Sending back: {reply}')
-		this.send(reply)
-
-	def event_connected(self, event, this):
-		print(str(this._cib))
-
-	def event_disconnected(self, event, this):
-		print(str(this._cib))
-
-	def t_app_server(self, cib: ConnInfoBlock):
-		print(f'App started for {cib}')
-		self.connection = GenericConnection(cib, {
-			GenericConnection.EVENT_CONNECT: self.event_connected,
-			GenericConnection.EVENT_DISCONNECT: self.event_disconnected,
-			GenericConnection.EVENT_READING: self.event_reading,
-			GenericConnection.EVENT_RECONNECT: self.event_reconnect,
-			# GenericConnection.EVENT_WRITING: event_writing,
-		})
-		# connection.is_auto_reconnect_allowed = True
-		self.connection.wait_for_subroutines()
+		self._is_ssl_disabled = disable_ssl and confirm_disabling_of_ssl
+		self._connection_threads = []
 
 	def run(self) -> None:
-		context = Utils.get_server_socket_context(self._pem_bundle_name)
 
-		sub_threads = []
-
-		with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
-			sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-			sock.bind((self._host, self._port))
-			sock.listen(5)
-
-			with context.wrap_socket(sock, server_side=True) as ssl_sock:
-				read_list = [ssl_sock, ]
-
-				print('## Waiting')
-				while self.is_running:
-					readable, _, exceptional = select.select(read_list, [], [], 5)
-					for s in readable:
-						cib = ConnInfoBlock.from_accept(s.accept())
-
-						t_as = threading.Thread(
-							name=f'App {cib.name}',
-							target=self.t_app_server,
-							args=(cib,)
-						)
-						sub_threads.append(t_as)
-						t_as.start()
+		GenericConnection.prepare_server(
+			self._server_callback,
+			self._pem_bundle_name,
+			self._host, self._port,
+			self._is_ssl_disabled
+		)
 
 		print('## ExampleServer: waiting for sub-threads to finish')
-		for t in sub_threads:
+		for t in self._connection_threads:
 			t.join()
+
+	def _server_callback(self, sock):
+		while self.is_running:
+			handler = BaseServerHandler()
+			g = GenericConnection.gen_new_server_connection(
+				sock,
+				{
+					GenericConnection.EVENT_CONNECTED: handler.event_connected,
+					GenericConnection.EVENT_DISCONNECTED: handler.event_disconnected,
+					GenericConnection.EVENT_READING: handler.event_reading,
+					GenericConnection.EVENT_BEFORE_RECONNECT: handler.event_before_reconnect,
+					GenericConnection.EVENT_AFTER_RECONNECT: handler.event_after_reconnect,
+					# GenericConnection.EVENT_WRITING: t.event_writing,
+				}
+			)
+			for connection in g:
+				if connection:
+					handler.connection = connection
+					self._connection_threads.append(handler)
+					handler.start()

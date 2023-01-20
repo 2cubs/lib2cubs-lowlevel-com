@@ -9,10 +9,13 @@ Utils.setup(dirname(abspath(__file__)))
 host = 'localhost'
 port = 60009
 
+disable_ssl = False
+
 
 if __name__ == '__main__':
     try:
-        server = ExampleServer('kokoko', host, port)
+        server = ExampleServer('kokoko-bundle.pem', host, port,
+                               disable_ssl=disable_ssl, confirm_disabling_of_ssl=disable_ssl)
         server.start()
         server.join()
     except (KeyboardInterrupt, SystemExit):

@@ -149,3 +149,10 @@ This is a really special af-type. After the head-part ending by "\n" symbol, the
 This af-type allows to implement Audio/Video, Screencasting, Streamed data delivery. It can't be used without having
 the control channel opened. Because the end of the streaming can be triggered only by 
 the signaling frames (Simple frames in the control channel). So Stream shouldn't be used standalone.
+
+
+## Additional dev/debug info/suggestions
+ * To analyse packages/communication use `wireshark` and disable the `ssl` (disable it only for analysis, do not disable it for 
+   any types of production!)
+ * For the viewing info about the frame/AF it has `explain()` method, it will display info comfortably about 
+   the frame/AF.
