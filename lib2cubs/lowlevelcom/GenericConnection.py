@@ -109,10 +109,6 @@ class GenericConnection:
 					t.start()
 					sub_threads.append(t)
 
-		for t in sub_threads:
-			logging.debug('Waiting 30 seconds for sub-threads to complete')
-			t.join(timeout=30)
-
 	def prepare_af_structures(self, first_byte: int):
 		af_type = int(first_byte >> 4)
 		szofsz = int(first_byte & 0x0F)
@@ -256,15 +252,12 @@ class GenericConnection:
 		return self._cib.socket
 
 	def wait_for_subroutines(self):
-		logging.debug('Waiting for GenericConnection Sub-Routines')
-
 		for t in self._sub_threads:
 			t.join()
 		self._sub_threads = []
-		logging.debug('Waiting for GenericConnection Sub-Routines has ended')
 
 	def disconnect(self, reconnect: bool = False):
-		logging.debug('Disconnect has been invoked; Reconnedt flag: %s', reconnect)
+		logging.debug('Disconnect has been invoked; Reconnect flag: %s', reconnect)
 
 		self._connection_shutdown(self._cib.socket, reconnect)
 
@@ -284,6 +277,14 @@ class GenericConnection:
 			# FIX   Important!
 			# if is_auto_reconnect:
 			# 	self._trigger_event(self.EVENT_RECONNECT)
+
+	@property
+	def host(self):
+		return self.socket.getsockname()[0]
+
+	@property
+	def port(self):
+		return self.socket.getsockname()[1]
 
 	@classmethod
 	def prepare_client(cls, callback: callable, pem_bundle_name: str, host: str, port: int, is_ssl_disabled: bool) -> None:
