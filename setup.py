@@ -5,7 +5,7 @@ with open('README.md', 'r', encoding='utf-8') as fd:
 
 setup(
 	name='lib2cubs-lowlevel-com',
-	version='0.10.0',
+	version='1.1.0',
 	author='Ivan Ponomarev',
 	author_email='pi@spaf.dev',
 	description='2cubs low-level communication library',
