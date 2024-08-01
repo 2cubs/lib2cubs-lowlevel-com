@@ -148,10 +148,22 @@ class GenericConnection:
 
 					first_byte = s.recv(1)
 					if len(first_byte) > 0:
+						# print(f'First byte {first_byte} and hex({hex(int(first_byte[0]))})')
 
 						szofsz, app_frame_class = self.prepare_af_structures(first_byte[0])
-						size_to_read = int(s.recv(szofsz)[0])
-						payload = s.recv(size_to_read)
+
+						# size = self._size.to_bytes(self._sz_of_sz, 'big', signed=False)
+						# reverted = int.from_bytes(neck, 'big', signed=False)
+						size_to_read = int.from_bytes(s.recv(szofsz), 'big', signed=False)
+
+						received_bytes = ""
+						payload = b""
+						size_left_to_read = size_to_read
+						while len(received_bytes) < size_to_read:
+							# print('rereading because %s < %s' % (len(received_bytes), size_to_read))
+							received_bytes = s.recv(size_left_to_read)
+							payload += received_bytes
+							size_left_to_read -= len(received_bytes)
 
 						frame = app_frame_class(payload=payload)
 					else:
@@ -202,8 +214,13 @@ class GenericConnection:
 					# TODO  Conversion!
 					try:
 						logging.debug(f'Acquiring writing lock')
+						bytes_data = bytes(data)
+
 						self._writing_lock.acquire()
-						s.send(bytes(data))
+						s.sendall(bytes_data)
+						# if written_bytes != len(bytes_data):
+						# 	logging.error("Seems that not all bytes have been written to the socket! "
+						# 					"data-length: %s; sent: %s", len(bytes_data), written_bytes)
 					except OSError as e:
 						# NOTE  Connection is closed
 						logging.error('Error has happened: %s', e)

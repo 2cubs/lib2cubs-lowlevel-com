@@ -2,6 +2,7 @@ import json
 import logging
 from abc import ABCMeta
 from copy import copy
+from json import JSONDecodeError
 from uuid import UUID, uuid1
 
 from . import EngineFoundation, MetadataField
@@ -113,7 +114,9 @@ class AppFrame(metaclass=ABCMeta):
 
 		head = int(f"{self.AF_TYPE:04b}{self._sz_of_sz:04b}", 2).to_bytes(1, 'big')
 		try:
-			neck = int("{msg_len:0{width}b}".format(msg_len=self._size, width=self._sz_of_sz * 8), 2).to_bytes(self._sz_of_sz, 'big')
+			# width = self._sz_of_sz * 8
+			# neck = int(f"{self._size:0{width}b}", 2).to_bytes(self._sz_of_sz, 'big')
+			neck = self._size.to_bytes(self._sz_of_sz, 'big', signed=False)
 			return head + neck + metadata + b'\n' + content
 		except OverflowError as e:
 			print('OverflowError happened')
@@ -137,13 +140,19 @@ class AppFrame(metaclass=ABCMeta):
 
 	@classmethod
 	def decode_content(cls, encoded_content: str):
-		return json.loads(encoded_content)
+		res = json.loads(encoded_content)
+
+		return res
 
 	def __init__(self, content: any = None, metadata: MetadataField = None, payload: bytes = None):
 		if payload:
 			try:
 				meta, encoded_content = payload.decode('utf-8').split('\n', maxsplit=1)
-				content = self.decode_content(encoded_content)
+				try:
+					content = self.decode_content(encoded_content)
+				except JSONDecodeError as e:
+					logging.error(f'#> %s ||| %s', meta, encoded_content)
+					raise e
 				metadata = MetadataField.parse(meta)
 			except UnicodeDecodeError as e:
 				logging.error(e)
